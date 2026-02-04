@@ -1,5 +1,6 @@
 using FluentValidation;
 using IntegrationService.Application.Common.Interfaces;
+using Microsoft.AspNetCore.Diagnostics;
 using IntegrationService.Application.Requests.Commands.AddRequest;
 using IntegrationService.Infrastructure.Configuration;
 using IntegrationService.Infrastructure.ExternalServices;
@@ -71,10 +72,13 @@ builder.Services.AddScoped<IRequestRepository, RequestRepository>();
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
 // Register MediatR
-builder.Services.AddMediatR(cfg => 
+builder.Services.AddMediatR(cfg =>
 {
     cfg.RegisterServicesFromAssembly(typeof(AddRequestCommand).Assembly);
 });
+
+// Register validation pipeline behavior (runs validators before handlers)
+builder.Services.AddTransient(typeof(IPipelineBehavior<,>), typeof(IntegrationService.Application.Common.Behaviors.ValidationBehavior<,>));
 
 // Register FluentValidation
 builder.Services.AddValidatorsFromAssembly(typeof(AddRequestCommand).Assembly);
@@ -102,6 +106,42 @@ builder.Services.AddHealthChecks()
     .AddDbContextCheck<ApplicationDbContext>();
 
 var app = builder.Build();
+
+// Handle FluentValidation.ValidationException and return 400 with error details
+app.UseExceptionHandler(exceptionHandlerApp =>
+{
+    exceptionHandlerApp.Run(async context =>
+    {
+        context.Response.ContentType = "application/problem+json";
+        var exceptionHandlerFeature = context.Features.Get<IExceptionHandlerFeature>();
+        var exception = exceptionHandlerFeature?.Error;
+
+        if (exception is ValidationException validationException)
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            var errors = validationException.Errors
+                .GroupBy(e => e.PropertyName)
+                .ToDictionary(g => g.Key, g => g.Select(e => e.ErrorMessage).ToArray());
+            await context.Response.WriteAsJsonAsync(new
+            {
+                type = "https://tools.ietf.org/html/rfc7231#section-6.5.1",
+                title = "One or more validation errors occurred.",
+                status = StatusCodes.Status400BadRequest,
+                errors
+            });
+        }
+        else
+        {
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                type = "https://tools.ietf.org/html/rfc7231#section-6.6.1",
+                title = "An error occurred while processing your request.",
+                status = StatusCodes.Status500InternalServerError
+            });
+        }
+    });
+});
 
 // Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
