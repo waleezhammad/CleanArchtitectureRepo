@@ -19,5 +19,7 @@ class file
         Console.WriteLine($"Size: {Size} bytes");
         Console.WriteLine($"Created Date: {CreatedDate}");
         Console.WriteLine($"Modified Date: {ModifiedDate}");
+
+
     }
 }
