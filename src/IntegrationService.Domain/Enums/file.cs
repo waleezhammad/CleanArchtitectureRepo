@@ -23,6 +23,9 @@ class file
         Console.WriteLine($"Modified Date3: {ModifiedDate}");
         Console.WriteLine($"Modified Date4: {ModifiedDate}");
 
+        Console.WriteLine($"Modified Date1: {ModifiedDate}");
+
+        Console.WriteLine($"Modified Date2: {ModifiedDate}");
 
     }
 }
